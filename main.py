@@ -1,5 +1,5 @@
 
-# AI for this: Salesforce/blip-image-captioning-large
+# AI for this: Salesforce/blip-image-captioning-large |  GPT2LMHeadModel | 
 
 #pip install pillow
 #pip install transformers torch torchvision pillow
