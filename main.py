@@ -5,7 +5,8 @@
 #pip install transformers torch torchvision pillow
 #python.exe -m pip install --upgrade pip
 #pip install transformers pillow
-#pip install hf_xet
+#pip install diffusers transformers accelerate open_clip_torch
+#pip install --upgrade diffusers transformers accelerate torch
 
 # ---------------------------------------FOR IMAGE TO TEXT-------------------------------------------------
 
@@ -19,10 +20,17 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import os
 import torch
 
-#-----------------------
+# -------------------------------------FOR TEXT TO VIDEO-----------------------------------------------------
 
-# ---------------------------------------IMAGE TO TEXT-------------------------------------------------
-processor = AutoProcessor.from_pretrained("Salesforce/blip-image-captioning-large")
+import open_clip
+from diffusers import DiffusionPipeline
+from diffusers.utils import export_to_video
+from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
+
+#________________________________________________________________________________________________________________#
+
+# --------------------------------------- IMAGE TO TEXT -------------------------------------------------
+processor = AutoProcessor.from_pretrained("Salesforce/blip-image-captioning-large", use_fast=True)
 model = AutoModelForVision2Seq.from_pretrained("Salesforce/blip-image-captioning-large")
 
 image = Image.open("Images/noveny2.jpg")
@@ -35,7 +43,7 @@ caption = processor.decode(generated_ids[0], skip_special_tokens=True)
 
 print("BLIP növényfelismerés:", caption)
 
-# -------------------------------------TEXT GENERATING--------------------------------------------------
+# ------------------------------------- TEXT GENERATING --------------------------------------------------
 
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
@@ -65,3 +73,45 @@ result = generator(
 description = result[len(prompt):].strip()
 print("\nDescription:")
 print(description)
+
+# -------------------------------------------- TEXT TO VIDEO ------------------------------------------------
+
+print(f"\nGenerálok videót erről: {caption}")
+
+# Prompt a növény kinövéséről
+prompt = f"Time-lapse of a {caption} growing from seed in soil, realistic nature close-up, sprout emerging, leaves unfolding, soft sunlight, high quality"
+negative_prompt = "blurry, low quality, text, watermark, deformed"
+
+# Legacy modell: nincs fp16 hiba, kisebb és stabilabb
+pipe = DiffusionPipeline.from_pretrained(
+    "damo-vilab/text-to-video-ms-1.7b-legacy",  # ← Ez a kulcs: legacy verzió
+    torch_dtype=torch.float16,
+    # variant="fp16"  ← Hagyd ki ezt, a legacy-ben nincs rá szükség
+)
+
+# Scheduler optimalizálás (gyorsabb generálás)
+pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+
+# GPU optimalizálás (ha van)
+pipe = pipe.to("cuda" if torch.cuda.is_available() else "cpu")
+pipe.enable_model_cpu_offload()  # VRAM spórolás
+pipe.enable_vae_slicing()        # További optimalizálás
+
+# Videó generálása (1–3 perc)
+print("Videó generálása... (légy türelmes!)")
+video_frames = pipe(
+    prompt,
+    num_inference_steps=25,   # 25–50: minőség vs. sebesség
+    height=256,
+    width=256,
+    num_frames=16,            # 16 frame ≈ 2 mp
+    guidance_scale=9.0,
+    negative_prompt=negative_prompt
+).frames[0]  # [0] a nested list miatt
+
+# Mentés MP4-be (8 fps)
+safe_name = "".join(c if c.isalnum() or c in " _-" else "_" for c in caption.lower())[:40]
+output_file = f"growing_{safe_name}.mp4"
+export_to_video(video_frames, output_file, fps=8)
+
+print(f"\nVideó kész! Mentve: {os.path.abspath(output_file)}")
