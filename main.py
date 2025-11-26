@@ -7,6 +7,7 @@
 #pip install transformers pillow
 #pip install diffusers transformers accelerate open_clip_torch
 #pip install --upgrade diffusers transformers accelerate torch
+# pip install opencv-python
 
 # ---------------------------------------FOR IMAGE TO TEXT-------------------------------------------------
 
@@ -85,8 +86,6 @@ negative_prompt = "blurry, low quality, text, watermark, deformed"
 # Legacy modell: nincs fp16 hiba, kisebb és stabilabb
 pipe = DiffusionPipeline.from_pretrained(
     "damo-vilab/text-to-video-ms-1.7b-legacy",  # ← Ez a kulcs: legacy verzió
-    torch_dtype=torch.float16,
-    # variant="fp16"  ← Hagyd ki ezt, a legacy-ben nincs rá szükség
 )
 
 # Scheduler optimalizálás (gyorsabb generálás)
@@ -94,7 +93,6 @@ pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 
 # GPU optimalizálás (ha van)
 pipe = pipe.to("cuda" if torch.cuda.is_available() else "cpu")
-pipe.enable_model_cpu_offload()  # VRAM spórolás
 pipe.enable_vae_slicing()        # További optimalizálás
 
 # Videó generálása (1–3 perc)
